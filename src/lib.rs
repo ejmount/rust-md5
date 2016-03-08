@@ -17,6 +17,19 @@ fn empty_test() {
 	assert!(to_hex_string(&try) == trueans);
 }
 
+#[test]
+fn SevenHundredAs()
+{
+	use md5::*;
+
+	let expected = "C04C6D6896853D32B720D69A6027E6BE";
+	let A = 'A' as u8;
+	let vals = vec![A; 700];
+	let try = md5::compute(&vals);
+	println!("{0}", to_hex_string(&try));
+	assert!(to_hex_string(&try) == expected);
+}
+
 
 extern crate core;
 
@@ -81,7 +94,7 @@ mod md5 {
 		}
 
 		let size : u64 = 8*data.len() as u64;
-		for i in (0..8).rev() {
+		for i in (0..8) {
 			our_data.push((size.wrapping_shr(8*i) % 256) as u8);
 		}
 

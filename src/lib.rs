@@ -2,7 +2,7 @@ extern crate core;
 use std::slice::Iter;
 
 const K : [u32; 64] = [
-		0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
+	0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
 	0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
 	0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be,
 	0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
@@ -128,7 +128,6 @@ impl Md5 {
 	        b = b.wrapping_add(leftrotate(a.wrapping_add(f).wrapping_add(K[i as usize]).wrapping_add(m[g as usize]), S[i as usize]));
 	        a = d_temp;
 	    }
-		//add this chunk's hash to result so far:
 	    self.a0 = self.a0.wrapping_add(a);
 	    self.b0 = self.b0.wrapping_add(b);
 	    self.c0 = self.c0.wrapping_add(c);
@@ -203,26 +202,29 @@ fn leftrotate (x : u32, c: u32) -> u32 {
 	    return x.rotate_left(c);
 }
 
-#[test]
-fn empty_object_test() {
+mod tests {
 
-	let mut hash = Md5::new();
-	let vals = vec![];
-	hash.update(vals.iter()	);
-	let trueans = "D41D8CD98F00B204E9800998ECF8427E";
-	let ans = hash.hexdigest();
+	#[test]
+	fn empty_object_test() {
 
-	assert!(to_hex_string(&ans) == trueans);
-}
+		let mut hash = Md5::new();
+		let vals = vec![];
+		hash.update(vals.iter()	);
+		let trueans = "D41D8CD98F00B204E9800998ECF8427E";
+		let ans = hash.hexdigest();
 
-#[test]
-fn seven_hundred_as() {
-	let mut hash = Md5::new();
-	let a = 'A' as u8;
-	let vals = vec![a; 700];
-	hash.update(vals.iter()	);
-	let trueans = "C04C6D6896853D32B720D69A6027E6BE";
-	let ans = hash.hexdigest();
+		assert!(to_hex_string(&ans) == trueans);
+	}
 
-	assert!(to_hex_string(&ans) == trueans);	
+	#[test]
+	fn seven_hundred_as() {
+		let mut hash = Md5::new();
+		let a = 'A' as u8;
+		let vals = vec![a; 700];
+		hash.update(vals.iter()	);
+		let trueans = "C04C6D6896853D32B720D69A6027E6BE";
+		let ans = hash.hexdigest();
+
+		assert!(to_hex_string(&ans) == trueans);	
+	}
 }

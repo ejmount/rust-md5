@@ -1,5 +1,5 @@
-extern crate core;
-use std::slice::Iter;
+//use std;
+use std::slice::*;
 
 const K : [u32; 64] = [
 	0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
@@ -30,16 +30,18 @@ const S : [u32; 64] =
 	6, 10, 15, 21, 6, 10, 15, 21 
 ];
 
+const BLOCK_SIZE : usize = 64;
 
 
+#[derive(Copy)]
 pub struct Md5 {
 		a0 : u32, 
 		b0 : u32, 
 		c0 : u32, 
 		d0 : u32,
 		end_of_buffer : usize,
-		length_so_far : u64,
-		buffer : [u8; 64],
+		length_so_far : usize,
+		buffer : [u8; BLOCK_SIZE],
 }
 
 impl Clone for Md5 {
@@ -64,32 +66,64 @@ impl Md5 {
 			b0: 0xefcdab89,
 			c0: 0x98badcfe,
 			d0: 0x10325476,
-			buffer: [0; 64],
+			buffer: [0; BLOCK_SIZE],
 			end_of_buffer: 0,
 			length_so_far: 0,
 		}
 	}
 
-	pub fn update(&mut self, bytes : Iter<u8>) -> &Md5 {
-		for v in bytes {
-			self.buffer[self.end_of_buffer] = *v;
-			self.length_so_far += 1;
-			self.end_of_buffer += 1;
-			if self.end_of_buffer >= self.buffer.len() {
-				self.compute_block();
-				self.end_of_buffer = 0;
-			}
+	pub fn update(&mut self, bytes : &[u8]) -> &mut Md5 {
+
+		let remaining_space = BLOCK_SIZE - self.end_of_buffer;
+
+		if remaining_space > bytes.len() {			
+			let ptr = &mut self.buffer[BLOCK_SIZE-remaining_space.. BLOCK_SIZE-remaining_space+bytes.len()];
+			ptr.clone_from_slice(&bytes[0..bytes.len()]);
+			self.length_so_far += bytes.len();
+			self.end_of_buffer += bytes.len();
+			//print!("H", );
 		}
-		return self;
+		else {
+			{
+				let ptr = &mut self.buffer[BLOCK_SIZE - remaining_space .. BLOCK_SIZE];
+				ptr.clone_from_slice(&bytes[0..remaining_space]);
+			}
+			self.end_of_buffer = 0;
+			self.length_so_far += remaining_space;
+			self.compute_block(None);
+			for i in self.buffer.iter_mut() {
+				*i = 99;
+			}
+
+			let total_blocks = (bytes.len() - remaining_space) / 64; 
+
+			for i in 0..total_blocks {
+				let start_index = i*BLOCK_SIZE + remaining_space;
+				self.compute_block(Some(&bytes[start_index..start_index+BLOCK_SIZE]));
+				self.length_so_far += BLOCK_SIZE;
+			}
+
+			let leftover = (bytes.len() - remaining_space) % 64;
+			let buffer_ptr = &mut self.buffer[0..leftover];
+			buffer_ptr.clone_from_slice(&bytes[bytes.len()-leftover..bytes.len()]);
+			self.end_of_buffer += leftover;
+			self.length_so_far += leftover;
+		}
+		//println!("SR: {1}, {0:2} ", to_hex_string(&self.buffer), remaining_space);
+		return self
 	}
 
-	fn compute_block(&mut self) {
-		use core::ops::Not;		
+	fn compute_block(&mut self, input : Option<&[u8]>) {
+
+		let data : &[u8] = match input {
+			Some(a) => a,
+			None => &self.buffer
+		};
 
 		let mut m : [u32; 16] = [0;16];
 
-		for (i, bits) in self.buffer.chunks(4).enumerate() {
-			m[i] = from_le_bytes(bits[0], bits[1], bits[2], bits[3])
+		for i in 0..16 {
+			m[i] = from_le_bytes(data[4*i+0], data[4*i+1], data[4*i+2], data[4*i+3])
 		}
 
 		let m = m;
@@ -104,11 +138,11 @@ impl Md5 {
 	    for i in 0..64 {
 		    match i {
 		    	0 ... 15 => { 
-		    		f = (b & c) | (b.not() & d); 
+		    		f = (b & c) | (!b & d); 
 		    		g = i;
 		    	}
 		        16...31 => {
-		            f = (d & b) | (d.not() & c);
+		            f = (d & b) | (!d & c);
 		            g = (5*i + 1) % 16;
 		        }
 		        32...47 => {
@@ -116,7 +150,7 @@ impl Md5 {
 		            g = (3*i + 5) % 16;
 		        }
 		        48...63 => {
-		            f = c ^ (b | d.not());
+		            f = c ^ (b | !d);
 		            g = (7*i) % 16;
 		        }
 		        _ => panic!("Out of bounds")
@@ -135,11 +169,12 @@ impl Md5 {
 	}
 
 
+
 	fn complete_data(&self) -> Md5 {
 
 		let mut temp = self.clone();
 
-		temp.update([0b10000000 as u8].iter());
+		temp.update(&[0b10000000u8]);
 
 		let mod512 = temp.end_of_buffer;	
 		let padding_length = 
@@ -149,15 +184,15 @@ impl Md5 {
 				{ 56 - mod512 };
 
 		for _ in 0..padding_length {
-			temp.update([0 as u8].iter());
+			temp.update(&[0]);
 		}
 
-		let size : u64 = 8*self.length_so_far as u64;
+		let size  = 8*self.length_so_far as u64;
 		let mut size_bytes : [u8; 8] = [0; 8];
 		for i in 0..8 {
-			size_bytes[i as usize] = (size.wrapping_shr(8*i) % 256) as u8;
+			size_bytes[i] = (size.wrapping_shr(8*(i as u32)) % 256) as u8;
 		}
-		temp.update(size_bytes.iter());
+		temp.update(&size_bytes);
 
 		return temp;
 	}
@@ -204,12 +239,14 @@ fn leftrotate (x : u32, c: u32) -> u32 {
 
 mod tests {
 
+	use super::*;
+
 	#[test]
 	fn empty_object_test() {
 
 		let mut hash = Md5::new();
 		let vals = vec![];
-		hash.update(vals.iter()	);
+		hash.update(&vals);
 		let trueans = "D41D8CD98F00B204E9800998ECF8427E";
 		let ans = hash.hexdigest();
 
@@ -221,10 +258,35 @@ mod tests {
 		let mut hash = Md5::new();
 		let a = 'A' as u8;
 		let vals = vec![a; 700];
-		hash.update(vals.iter()	);
+		hash.update(&vals);
 		let trueans = "C04C6D6896853D32B720D69A6027E6BE";
 		let ans = hash.hexdigest();
 
 		assert!(to_hex_string(&ans) == trueans);	
 	}
+
+	#[test]
+	fn associativity_test() {
+
+		let mut hash = Md5::new();
+		let vals = vec![b'B'; 32];
+    	let mut vals2 = Vec::new();
+	    vals2.resize(64, b'A');
+
+	    hash.update(&vals);
+	    hash.update(&vals2);
+	    
+	    let mut vals3 = vec![b'A'; 32+64];
+	    for i in 0..32 {
+	        vals3[i]=b'B';
+	    }
+	    
+	    let mut secondhash = Md5::new();
+	    secondhash.update(&vals3);
+
+		let ans = hash.hexdigest();
+		let ans2 = secondhash.hexdigest();
+		assert!(to_hex_string(&ans) == to_hex_string(&ans2));
+	}
+
 }

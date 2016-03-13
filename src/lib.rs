@@ -44,6 +44,14 @@ pub struct Md5 {
 		buffer : [u8; BLOCK_SIZE],
 }
 
+struct StateVector {
+		a : u32,
+	    b : u32,
+	    c : u32,
+	    d : u32,
+	}
+
+
 impl Clone for Md5 {
     fn clone(&self) -> Md5 {
     		return Md5 {
@@ -75,15 +83,15 @@ impl Md5 {
 	pub fn update(&mut self, bytes : &[u8]) -> &mut Md5 {
 
 		let remaining_space = BLOCK_SIZE - self.end_of_buffer;
+		let bytes_length = bytes.len();
 
-		if remaining_space > bytes.len() {			
+		if remaining_space > bytes_length {			
 			let ptr = &mut self.buffer[BLOCK_SIZE-remaining_space.. BLOCK_SIZE-remaining_space+bytes.len()];
-			ptr.clone_from_slice(&bytes[0..bytes.len()]);
-			self.length_so_far += bytes.len();
-			self.end_of_buffer += bytes.len();
-			//print!("H", );
+			ptr.clone_from_slice(&bytes[0..bytes_length]);
+			self.length_so_far += bytes_length;
+			self.end_of_buffer += bytes_length;
 		}
-		else {
+		else{
 			{
 				let ptr = &mut self.buffer[BLOCK_SIZE - remaining_space .. BLOCK_SIZE];
 				ptr.clone_from_slice(&bytes[0..remaining_space]);
@@ -91,11 +99,8 @@ impl Md5 {
 			self.end_of_buffer = 0;
 			self.length_so_far += remaining_space;
 			self.compute_block(None);
-			for i in self.buffer.iter_mut() {
-				*i = 99;
-			}
 
-			let total_blocks = (bytes.len() - remaining_space) / 64; 
+			let total_blocks = (bytes_length - remaining_space) / 64; 
 
 			for i in 0..total_blocks {
 				let start_index = i*BLOCK_SIZE + remaining_space;
@@ -103,13 +108,12 @@ impl Md5 {
 				self.length_so_far += BLOCK_SIZE;
 			}
 
-			let leftover = (bytes.len() - remaining_space) % 64;
+			let leftover = (bytes_length - remaining_space) % 64;
 			let buffer_ptr = &mut self.buffer[0..leftover];
-			buffer_ptr.clone_from_slice(&bytes[bytes.len()-leftover..bytes.len()]);
+			buffer_ptr.clone_from_slice(&bytes[bytes_length-leftover..bytes_length]);
 			self.end_of_buffer += leftover;
 			self.length_so_far += leftover;
 		}
-		//println!("SR: {1}, {0:2} ", to_hex_string(&self.buffer), remaining_space);
 		return self
 	}
 
@@ -123,52 +127,61 @@ impl Md5 {
 		let mut m : [u32; 16] = [0;16];
 
 		for i in 0..16 {
-			m[i] = from_le_bytes(data[4*i+0], data[4*i+1], data[4*i+2], data[4*i+3])
+			m[i] = from_le_bytes(data[4*i+0], data[4*i+1], data[4*i+2], data[4*i+3]);
 		}
 
 		let m = m;
 
-	    let mut a = self.a0;
-	    let mut b = self.b0;
-	    let mut c = self.c0;
-	    let mut d = self.d0;
 		let mut f : u32;
 		let mut g : u32;
-		//main loop:
-	    for i in 0..64 {
-		    match i {
-		    	0 ... 15 => { 
-		    		f = (b & c) | (!b & d); 
-		    		g = i;
-		    	}
-		        16...31 => {
-		            f = (d & b) | (!d & c);
-		            g = (5*i + 1) % 16;
-		        }
-		        32...47 => {
-		            f = b ^ c ^ d;
-		            g = (3*i + 5) % 16;
-		        }
-		        48...63 => {
-		            f = c ^ (b | !d);
-		            g = (7*i) % 16;
-		        }
-		        _ => panic!("Out of bounds")
-		    }
 
-	        let d_temp = d;
-	        d = c;
-	        c = b;
-	        b = b.wrapping_add(leftrotate(a.wrapping_add(f).wrapping_add(K[i as usize]).wrapping_add(m[g as usize]), S[i as usize]));
-	        a = d_temp;
-	    }
-	    self.a0 = self.a0.wrapping_add(a);
-	    self.b0 = self.b0.wrapping_add(b);
-	    self.c0 = self.c0.wrapping_add(c);
-	    self.d0 = self.d0.wrapping_add(d);
+		let mut sv = StateVector{
+				a:self.a0,
+				b:self.b0,
+				c:self.c0,
+				d:self.d0,
+		};
+
+		for i in 0..16 {
+			f = (sv.b & sv.c) | (!sv.b & sv.d); 
+		    g = i;
+    		Md5::update_state(&mut sv, &m, i, f, g);
+		}
+
+		for j in 0..16 {
+			let i = j+16;
+			f = (sv.d & sv.b) | (!sv.d & sv.c);
+           	g = (5*i + 1) % 16;
+    		Md5::update_state(&mut sv, &m, i, f, g);
+		}
+
+		for j in 0..16 {
+			let i = j+32;
+			f = sv.b ^ sv.c ^ sv.d;
+            g = (3*i + 5) % 16;
+    		Md5::update_state(&mut sv, &m, i, f, g);
+		}
+
+		for j in 0..16 {
+			let i = j+48;
+			f = sv.c ^ (sv.b | !sv.d);
+            g = (7*i) % 16;
+         	Md5::update_state(&mut sv, &m, i, f, g);   
+		}
+	    self.a0 = self.a0.wrapping_add(sv.a);
+	    self.b0 = self.b0.wrapping_add(sv.b);
+	    self.c0 = self.c0.wrapping_add(sv.c);
+	    self.d0 = self.d0.wrapping_add(sv.d);
 	}
 
-
+	#[inline(always)]
+	fn update_state(sv : &mut StateVector, m : &[u32; 16], i : u32, f : u32, g : u32) {
+		let d_temp = sv.d;
+        sv.d = sv.c;
+        sv.c = sv.b;
+        sv.b = sv.b.wrapping_add(sv.a.wrapping_add(f).wrapping_add(K[i as usize]).wrapping_add(m[g as usize]).rotate_left(S[i as usize]));
+        sv.a = d_temp;
+	}
 
 	fn complete_data(&self) -> Md5 {
 
@@ -197,7 +210,6 @@ impl Md5 {
 		return temp;
 	}
 
-
 	pub fn hexdigest(&self) -> [u8;16] {
 
 		let completedhash = self.complete_data();
@@ -221,6 +233,7 @@ pub fn to_hex_string(bytes: &[u8]) -> String {
   strs.join("")
 }
 
+#[inline(always)]
 fn to_le_bytes(i: &u32) -> (u8, u8, u8, u8) {
 	let q1 = (i >> 24u32) % 256;
 	let q2 = (i >> 16u32) % 256;
@@ -229,12 +242,9 @@ fn to_le_bytes(i: &u32) -> (u8, u8, u8, u8) {
 	return (q4 as u8, q3 as u8, q2 as u8, q1 as u8)
 }
 
+#[inline(always)]
 fn from_le_bytes(a: u8, b:u8, c:u8, d:u8) -> u32 {
 	return (a as u32) + ((b as u32) << 8) + ((c as u32) << 16) + ((d as u32) << 24);
-}
-
-fn leftrotate (x : u32, c: u32) -> u32 {
-	    return x.rotate_left(c);
 }
 
 mod tests {

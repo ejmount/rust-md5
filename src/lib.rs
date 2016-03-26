@@ -1,5 +1,3 @@
-//use std;
-use std::slice::*;
 
 const K : [u32; 64] = [
 	0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
@@ -34,31 +32,36 @@ const BLOCK_SIZE : usize = 64;
 
 
 #[derive(Copy)]
-pub struct Md5 {
-		a0 : u32, 
-		b0 : u32, 
-		c0 : u32, 
-		d0 : u32,
-		end_of_buffer : usize,
-		length_so_far : usize,
-		buffer : [u8; BLOCK_SIZE],
-}
-
 struct StateVector {
 		a : u32,
 	    b : u32,
 	    c : u32,
 	    d : u32,
-	}
+}
 
+impl Clone for StateVector {
+    fn clone(&self) -> StateVector {
+    	return StateVector {
+	    	a: self.a,
+	    	b: self.b,
+	    	c: self.c,
+	    	d: self.d
+	    }
+    }
+}
+
+#[derive(Copy)]
+pub struct Md5 {
+		state : StateVector,
+		end_of_buffer : usize,
+		length_so_far : usize,
+		buffer : [u8; BLOCK_SIZE],
+}
 
 impl Clone for Md5 {
     fn clone(&self) -> Md5 {
     		return Md5 {
-				a0: self.a0,
-				b0: self.b0, 
-				c0: self.c0,
-				d0: self.d0,
+    			state : self.state,
 				buffer: self.buffer,
 				end_of_buffer: self.end_of_buffer,
 				length_so_far: self.length_so_far,
@@ -70,10 +73,12 @@ impl Clone for Md5 {
 impl Md5 {
 	pub fn new() -> Md5 {
 		return Md5 {
-			a0: 0x67452301, 
-			b0: 0xefcdab89,
-			c0: 0x98badcfe,
-			d0: 0x10325476,
+			state: StateVector {
+				a: 0x67452301, 
+				b: 0xefcdab89,
+				c: 0x98badcfe,
+				d: 0x10325476,
+				},
 			buffer: [0; BLOCK_SIZE],
 			end_of_buffer: 0,
 			length_so_far: 0,
@@ -135,12 +140,7 @@ impl Md5 {
 		let mut f : u32;
 		let mut g : u32;
 
-		let mut sv = StateVector{
-				a:self.a0,
-				b:self.b0,
-				c:self.c0,
-				d:self.d0,
-		};
+		let mut sv = self.state;
 
 		for i in 0..16 {
 			f = (sv.b & sv.c) | (!sv.b & sv.d); 
@@ -168,10 +168,10 @@ impl Md5 {
             g = (7*i) % 16;
          	Md5::update_state(&mut sv, &m, i, f, g);   
 		}
-	    self.a0 = self.a0.wrapping_add(sv.a);
-	    self.b0 = self.b0.wrapping_add(sv.b);
-	    self.c0 = self.c0.wrapping_add(sv.c);
-	    self.d0 = self.d0.wrapping_add(sv.d);
+	    self.state.a = self.state.a.wrapping_add(sv.a);
+	    self.state.b = self.state.b.wrapping_add(sv.b);
+	    self.state.c = self.state.c.wrapping_add(sv.c);
+	    self.state.d = self.state.d.wrapping_add(sv.d);
 	}
 
 	#[inline(always)]
@@ -215,7 +215,7 @@ impl Md5 {
 		let completedhash = self.complete_data();
 
 		let mut result = [0u8; 16];
-		for (index, v) in [completedhash.a0, completedhash.b0, completedhash.c0, completedhash.d0].iter().enumerate() {
+		for (index, v) in [completedhash.state.a, completedhash.state.b, completedhash.state.c, completedhash.state.d].iter().enumerate() {
 			let bytes = to_le_bytes(v);
 			result[4*index] = bytes.0;
 			result[4*index+1] = bytes.1;
@@ -247,6 +247,7 @@ fn from_le_bytes(a: u8, b:u8, c:u8, d:u8) -> u32 {
 	return (a as u32) + ((b as u32) << 8) + ((c as u32) << 16) + ((d as u32) << 24);
 }
 
+#[cfg(test)]
 mod tests {
 
 	use super::*;
